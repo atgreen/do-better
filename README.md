@@ -215,13 +215,17 @@ RUN /usr/local/bin/build-better-image.sh openjdk-17-headless
 - Use `cmp -s keep old` to detect when dependency closure is stable
 - Always use `--nodeps --allmatches` for safe removal in installroot context
 
-# Buildinfo Propagation (inside the script):
-# - If the builder has `/usr/share/buildinfo`, copy it into the rootfs:
-#     if [ -d /usr/share/buildinfo ]; then
-#       mkdir -p "$rootfs/usr/share" && cp -a /usr/share/buildinfo "$rootfs/usr/share/"
-#     else
-#       mkdir -p "$rootfs/usr/share/buildinfo"  # ensure directory exists for scanners
-#     fi
+#### Buildinfo propagation (inside the script)
+
+Use this snippet to keep scanners happy:
+
+```bash
+# Preserve buildinfo for scanners
+if [ -d /usr/share/buildinfo ]; then
+  mkdir -p "$rootfs/usr/share" && cp -a /usr/share/buildinfo "$rootfs/usr/share/"
+else
+  mkdir -p "$rootfs/usr/share/buildinfo"  # ensure directory exists for scanners
+fi
 ```
 
 ### Step 4: Create Minimal Runtime Stage
@@ -243,7 +247,7 @@ RUN /usr/local/bin/build-better-image.sh openjdk-17-headless
 - **Always set DNF flags**: `--setopt=install_weak_deps=False --setopt=tsflags=nodocs --nogpgcheck`
 - **Install into installroot**: Use `--installroot="$rootfs" --releasever="$RELEASE_VERSION"` and proper repo config
 - **Avoid release meta packages in rootfs**: Do not install `fedora-release`/`redhat-release` into the installroot to prevent base chains pulling `coreutils`.
-- **Minimal dependency closure with runtime protection**: Compute the minimal dependency closure and erase everything not needed, but ALWAYS protect critical runtime packages (glibc, bash, nodejs, essential libs) from removal.
+ - **Minimal dependency closure with runtime protection**: Compute the minimal dependency closure and erase everything not needed, but ALWAYS protect critical runtime packages (glibc, bash, nodejs, essential libs) from removal.
  - **Builder-only dependencies**: Install any tools required by the script (e.g., `diffutils` for `cmp`) in the builder stage only; never copy them into the scratch image.
 
 ### File System Cleanup
@@ -252,7 +256,7 @@ RUN /usr/local/bin/build-better-image.sh openjdk-17-headless
 - Remove documentation and man pages
 - Clean package manager metadata
 - Retain only `C`/`C.UTF-8` locale; prune others
-- Optionally `strip --strip-unneeded` ELF binaries when available
+ - Optionally `strip --strip-unneeded` ELF binaries when available
  - Remove DNF/YUM state if not needed at runtime: `/var/lib/dnf` and repo metadata under `/etc/yum.repos.d` inside the rootfs.
  - Preserve `/usr/share/buildinfo`: do not delete; create the directory if absent so scanners can read it
  - Preserve the RPM database under `/var/lib/rpm` so scanners can read package inventories.
@@ -581,4 +585,3 @@ CMD ["your-app"]
 ```
 
 This approach typically achieves 60-80% size reduction while maintaining full functionality.
-
