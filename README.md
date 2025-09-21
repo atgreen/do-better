@@ -55,7 +55,7 @@ Create a script that:
 3. **Removes build artifacts**: Compilers, dev packages, caches, documentation
 4. **Creates minimal rootfs**: Strip down to bare essentials
 5. **Handles dependencies correctly**: Use the right release packages (`fedora-release` vs `redhat-release`)
-6. **Configures DNF/YUM repos for installroot**: Prefer `--use-host-config` when available; otherwise copy host repo files and RPM GPG keys into the installroot (see “DNF Repo Configuration” below)
+6. **Configures DNF/YUM repos for installroot**: Prefer `--use-host-config` when available; otherwise copy host repo files and RPM GPG keys into the installroot (details below)
 7. **Disables weak deps and docs**: Always use `--setopt=install_weak_deps=False` and `--setopt=tsflags=nodocs` to avoid pulling docs/i18n
 8. **De-duplicates packages**: Merge essential and extra packages, preserving order, without duplicates
 9. **Generates ld cache**: Run `ldconfig -r "$rootfs"` if available
@@ -215,6 +215,13 @@ RUN /usr/local/bin/build-better-image.sh openjdk-17-headless
 - Use `cmp -s keep old` to detect when dependency closure is stable
 - Always use `--nodeps --allmatches` for safe removal in installroot context
 
+#### DNF repo configuration (installroot)
+- Prefer `dnf --use-host-config` to reuse the builder's repo setup.
+- Otherwise copy host repo and keys into the installroot:
+  - Copy `/etc/yum.repos.d`, `/etc/dnf/vars` (if present), and `/etc/pki/rpm-gpg` into `$rootfs/etc`.
+- Always pass `--releasever="$(rpm -E %fedora|%rhel)"` and `--nogpgcheck` (or ensure keys are present).
+- Disable weak deps and docs with `--setopt=install_weak_deps=False --setopt=tsflags=nodocs`.
+
 #### Buildinfo propagation (inside the script)
 
 Use this snippet to keep scanners happy:
@@ -247,8 +254,8 @@ fi
 - **Always set DNF flags**: `--setopt=install_weak_deps=False --setopt=tsflags=nodocs --nogpgcheck`
 - **Install into installroot**: Use `--installroot="$rootfs" --releasever="$RELEASE_VERSION"` and proper repo config
 - **Avoid release meta packages in rootfs**: Do not install `fedora-release`/`redhat-release` into the installroot to prevent base chains pulling `coreutils`.
- - **Minimal dependency closure with runtime protection**: Compute the minimal dependency closure and erase everything not needed, but ALWAYS protect critical runtime packages (glibc, bash, nodejs, essential libs) from removal.
- - **Builder-only dependencies**: Install any tools required by the script (e.g., `diffutils` for `cmp`) in the builder stage only; never copy them into the scratch image.
+- **Minimal dependency closure with runtime protection**: Compute the minimal dependency closure and erase everything not needed, but ALWAYS protect critical runtime packages (glibc, bash, nodejs, essential libs) from removal.
+- **Builder-only dependencies**: Install any tools required by the script (e.g., `diffutils` for `cmp`) in the builder stage only; never copy them into the scratch image.
 
 ### File System Cleanup
 - Remove `/var/cache`, `/tmp`, `/var/log` contents
@@ -256,10 +263,10 @@ fi
 - Remove documentation and man pages
 - Clean package manager metadata
 - Retain only `C`/`C.UTF-8` locale; prune others
- - Optionally `strip --strip-unneeded` ELF binaries when available
- - Remove DNF/YUM state if not needed at runtime: `/var/lib/dnf` and repo metadata under `/etc/yum.repos.d` inside the rootfs.
- - Preserve `/usr/share/buildinfo`: do not delete; create the directory if absent so scanners can read it
- - Preserve the RPM database under `/var/lib/rpm` so scanners can read package inventories.
+- Optionally `strip --strip-unneeded` ELF binaries when available
+- Remove DNF/YUM state if not needed at runtime: `/var/lib/dnf` and repo metadata under `/etc/yum.repos.d` inside the rootfs.
+- Preserve `/usr/share/buildinfo`: do not delete; create the directory if absent so scanners can read it
+- Preserve the RPM database under `/var/lib/rpm` so scanners can read package inventories.
   
 Note: Using `rpm --erase --nodeps --allmatches` inside the installroot is safe for a scratch final image and dramatically shrinks dependency trees; verify your app still starts after removals.
 
